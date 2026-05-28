@@ -81,6 +81,7 @@ tracestory/
 ├── demo_service.py           # Basic demo trace generator
 ├── .env.example
 └── README.md
+```
 
 ---
 
