@@ -57,6 +57,8 @@ Engineers waste hours reading unreadable distributed traces. TraceStory takes ra
 ---
 
 ## Project Structure
+
+```
 tracestory/
 ├── backend/
 │   ├── main.py               # FastAPI app entry point
