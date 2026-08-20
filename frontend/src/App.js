@@ -1,5 +1,6 @@
 import { useState, useEffect } from "react";
 import axios from "axios";
+import ObservabilityOverview, { computeObservability, traceFromSpans } from "./ObservabilityOverview";
 
 const API = process.env.REACT_APP_API_URL || "http://127.0.0.1:8000/api";
 
@@ -97,11 +98,8 @@ export default function App() {
     setPasteLoading(false);
   };
 
-  const allDurations = traces.map(t => t.total_duration_ms);
-  const avgDurationAll = allDurations.length > 0 ? allDurations.reduce((a, b) => a + b, 0) / allDurations.length : 0;
-  const anomalyThreshold = avgDurationAll * 2;
-  const isAnomaly = (t) => avgDurationAll > 0 && t.total_duration_ms >= anomalyThreshold;
-  const anomalyCount = traces.filter(isAnomaly).length;
+  const baseMetrics = computeObservability(traces, traces);
+  const { isAnomaly } = baseMetrics;
 
   const parseSearchQuery = (q) => {
     const text = q.toLowerCase().trim();
@@ -140,26 +138,17 @@ export default function App() {
     return true;
   });
 
-  const maxDuration = spans.length > 0 ? Math.max(...spans.map(s => s.duration_ms)) : 1;
-  const totalTraces = filteredTraces.length;
-  const errorTraces = filteredTraces.filter(t => t.has_error).length;
-  const errorRate = totalTraces > 0 ? ((errorTraces / totalTraces) * 100).toFixed(1) : 0;
-  const avgDuration = totalTraces > 0 ? (filteredTraces.reduce((sum, t) => sum + t.total_duration_ms, 0) / totalTraces).toFixed(0) : 0;
-  const slowestTrace = filteredTraces.length > 0 ? filteredTraces.reduce((a, b) => a.total_duration_ms > b.total_duration_ms ? a : b) : null;
-  const rootCauseSpan = spans.find(s => s.status === "ERROR");
+  const allMetrics = computeObservability(traces, filteredTraces);
 
-  const serviceStats = {};
-  traces.forEach(t => {
-    t.services.forEach(svc => {
-      if (!serviceStats[svc]) serviceStats[svc] = { total: 0, errors: 0 };
-      serviceStats[svc].total += 1;
-      if (t.has_error) serviceStats[svc].errors += 1;
-    });
-  });
-  const serviceHealth = Object.entries(serviceStats)
-    .map(([name, s]) => ({ name, errorRate: ((s.errors / s.total) * 100).toFixed(0), total: s.total }))
-    .sort((a, b) => b.errorRate - a.errorRate)
-    .slice(0, 5);
+  const selectedForMetrics = [compareA, compareB].filter(Boolean);
+  const compareMetrics = computeObservability(selectedForMetrics, selectedForMetrics);
+
+  const latestPasteResult = pasteHistory[0] || null;
+  const latestPasteTrace = latestPasteResult ? traceFromSpans(latestPasteResult.spans || [], latestPasteResult.trace_id) : null;
+  const pasteMetrics = latestPasteTrace ? computeObservability([latestPasteTrace], [latestPasteTrace]) : null;
+
+  const maxDuration = spans.length > 0 ? Math.max(...spans.map(s => s.duration_ms)) : 1;
+  const rootCauseSpan = spans.find(s => s.status === "ERROR");
 
   const exampleTrace = JSON.stringify({
     spans: [
@@ -209,6 +198,13 @@ export default function App() {
           <div>
             <h2 style={{ color: "#fff", marginBottom: "8px" }}>📋 Paste Trace</h2>
             <p style={{ color: "#8ab4d4", marginBottom: "24px" }}>Paste your own trace JSON and get an instant AI summary + timeline.</p>
+            {pasteMetrics ? (
+              <ObservabilityOverview metrics={pasteMetrics} />
+            ) : (
+              <div style={{ background: "#112240", padding: "20px", borderRadius: "10px", border: "1px dashed #1e3a5f", marginBottom: "28px", color: "#8ab4d4", fontSize: "13px" }}>
+                📊 No observability data yet — paste a trace JSON below and click <span style={{ color: "#cde", fontWeight: "600" }}>⚡ Analyze Trace</span> to see metrics for this trace.
+              </div>
+            )}
             <div style={{ background: "#112240", padding: "24px", borderRadius: "10px", border: "1px solid #1e3a5f", marginBottom: "32px" }}>
               <div style={{ display: "flex", justifyContent: "space-between", marginBottom: "12px" }}>
                 <span style={{ color: "#fff", fontWeight: "600" }}>Trace JSON</span>
@@ -272,6 +268,7 @@ export default function App() {
           <div>
             <h2 style={{ color: "#fff", marginBottom: "8px" }}>⚖️ Compare Traces</h2>
             <p style={{ color: "#8ab4d4", marginBottom: "24px" }}>Select one trace for slot A and one for slot B to compare AI summaries side by side.</p>
+            {selectedForMetrics.length > 0 && <ObservabilityOverview metrics={compareMetrics} />}
             <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "24px", marginBottom: "24px" }}>
               {["A", "B"].map((slot) => (
                 <div key={slot} style={{ background: "#112240", padding: "20px", borderRadius: "10px", border: "1px solid #1e3a5f" }}>
@@ -318,47 +315,7 @@ export default function App() {
           </div>
         ) : (
           <div>
-            <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: "16px", marginBottom: "28px" }}>
-              <div style={{ background: "#112240", padding: "20px", borderRadius: "10px", border: "1px solid #1e3a5f" }}>
-                <div style={{ fontSize: "11px", color: "#8ab4d4", marginBottom: "8px", textTransform: "uppercase", letterSpacing: "1px" }}>Total Traces</div>
-                <div style={{ fontSize: "28px", fontWeight: "bold", color: "#fff" }}>{totalTraces}</div>
-                {anomalyCount > 0 && (
-                  <div style={{ fontSize: "12px", color: "#f39c12", marginTop: "6px", fontWeight: "600" }}>⚡ {anomalyCount} anomaly {anomalyCount > 1 ? "traces" : "trace"}</div>
-                )}
-              </div>
-              <div style={{ background: "#112240", padding: "20px", borderRadius: "10px", border: `1px solid ${parseFloat(errorRate) > 50 ? "#c0392b" : "#1e3a5f"}` }}>
-                <div style={{ fontSize: "11px", color: "#8ab4d4", marginBottom: "8px", textTransform: "uppercase", letterSpacing: "1px" }}>Error Rate</div>
-                <div style={{ fontSize: "28px", fontWeight: "bold", color: parseFloat(errorRate) > 50 ? "#ff6b6b" : "#69ff69" }}>{errorRate}%</div>
-              </div>
-              <div style={{ background: "#112240", padding: "20px", borderRadius: "10px", border: "1px solid #1e3a5f" }}>
-                <div style={{ fontSize: "11px", color: "#8ab4d4", marginBottom: "8px", textTransform: "uppercase", letterSpacing: "1px" }}>Avg Duration</div>
-                <div style={{ fontSize: "28px", fontWeight: "bold", color: "#fff" }}>{avgDuration}<span style={{ fontSize: "14px", color: "#8ab4d4" }}>ms</span></div>
-                {avgDurationAll > 0 && (
-                  <div style={{ fontSize: "11px", color: "#8ab4d4", marginTop: "6px" }}>Anomaly threshold: {anomalyThreshold.toFixed(0)}ms (2x avg)</div>
-                )}
-              </div>
-              <div style={{ background: "#112240", padding: "20px", borderRadius: "10px", border: "1px solid #1e3a5f" }}>
-                <div style={{ fontSize: "11px", color: "#8ab4d4", marginBottom: "8px", textTransform: "uppercase", letterSpacing: "1px" }}>Slowest Trace</div>
-                <div style={{ fontSize: "18px", fontWeight: "bold", color: "#f39c12" }}>{slowestTrace ? `${slowestTrace.total_duration_ms.toFixed(0)}ms` : "—"}</div>
-                <div style={{ fontSize: "11px", color: "#8ab4d4", marginTop: "4px" }}>{slowestTrace ? slowestTrace.services[0] : ""}</div>
-              </div>
-            </div>
-            <div style={{ background: "#112240", padding: "20px", borderRadius: "10px", border: "1px solid #1e3a5f", marginBottom: "24px" }}>
-              <h3 style={{ color: "#fff", margin: "0 0 16px 0", fontSize: "15px" }}>🏥 Service Health</h3>
-              <div style={{ display: "flex", flexDirection: "column", gap: "10px" }}>
-                {serviceHealth.map((svc, i) => (
-                  <div key={i}>
-                    <div style={{ display: "flex", justifyContent: "space-between", marginBottom: "4px" }}>
-                      <span style={{ fontSize: "13px", color: "#8ab4d4" }}>{svc.name}</span>
-                      <span style={{ fontSize: "12px", color: parseInt(svc.errorRate) > 50 ? "#ff6b6b" : "#69ff69", fontWeight: "600" }}>{svc.errorRate}% errors</span>
-                    </div>
-                    <div style={{ background: "#0a1628", borderRadius: "4px", height: "8px" }}>
-                      <div style={{ height: "8px", borderRadius: "4px", width: `${svc.errorRate}%`, background: parseInt(svc.errorRate) > 50 ? "#c0392b" : "#0070f3" }} />
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </div>
+            <ObservabilityOverview metrics={allMetrics} />
 
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "24px" }}>
               <div>
