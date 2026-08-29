@@ -27,3 +27,20 @@ class TraceSummary(Base):
     has_error = Column(String, nullable=True)
     category = Column(String, nullable=True, default="general")
     created_at = Column(DateTime, default=func.now())
+
+
+class Incident(Base):
+    __tablename__ = "incidents"
+
+    trace_id = Column(String, primary_key=True)
+    severity = Column(String, nullable=False)
+    title = Column(String, nullable=False)
+    root_cause_span_id = Column(String, nullable=False)
+    root_cause_service = Column(String, nullable=False)
+    root_cause_operation = Column(String, nullable=False)
+    reason = Column(String, nullable=False)
+    duration_ms = Column(Float, nullable=False)
+    status = Column(String, nullable=False)
+    latency_percentage = Column(Float, nullable=False)
+    explanation = Column(Text, nullable=True)
+    created_at = Column(DateTime, default=func.now())

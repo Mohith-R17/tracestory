@@ -1,65 +1,65 @@
-# Import FastAPI router, database session, and Span model
 from fastapi import APIRouter, Depends
 from sqlalchemy.orm import Session
 from backend.database import get_db
-from backend.models import Span
+from backend.models import Span, Incident
 from sqlalchemy import distinct
 
 router = APIRouter()
 
-
-# Get a summary of all traces stored in the database
 @router.get("/traces")
 def get_all_traces(db: Session = Depends(get_db)):
-
-    # Fetch all unique trace IDs
     trace_ids = db.query(distinct(Span.trace_id)).all()
-
     result = []
-
-    # Process each trace individually
     for (trace_id,) in trace_ids:
-
-        # Get all spans belonging to the current trace
         spans = db.query(Span).filter(Span.trace_id == trace_id).all()
-
-        # Check whether any span contains an error
         has_error = any(s.status == "ERROR" for s in spans)
-
-        # Calculate total execution time of the trace
         total_duration = sum(s.duration_ms for s in spans)
-
-        # Get all services involved in the trace
         services = list(set(s.service_name for s in spans))
-
-        # Get the trace category
+        # Get category from first span
         category = spans[0].category if spans else "general"
+        
+        # Check cached incident or run lazy detection
+        incident_rec = db.query(Incident).filter(Incident.trace_id == trace_id).first()
+        incident = False
+        severity = None
+        if incident_rec:
+            incident = True
+            severity = incident_rec.severity
+        else:
+            # Dynamic fallback detection for legacy traces
+            from backend.services.rca import detect_incident, calculate_rca, calculate_severity
+            from backend.models import TraceSummary
+            from sqlalchemy import func
+            avg_dur = db.query(func.avg(TraceSummary.total_duration_ms)).filter(TraceSummary.category == category).scalar()
+            avg_category_duration = float(avg_dur) if avg_dur is not None else 0.0
+            
+            is_incident, _, _ = detect_incident(spans, total_duration, avg_category_duration)
+            if is_incident:
+                incident = True
+                root_cause, _ = calculate_rca(spans, total_duration)
+                if root_cause:
+                    max_pct = root_cause["latency_percentage"] / 100.0
+                    error_spans_count = sum(1 for s in spans if s.status == "ERROR")
+                    severity = calculate_severity(error_spans_count, max_pct, total_duration, avg_category_duration)
 
-        # Build trace summary response
         result.append({
             "trace_id": trace_id,
             "span_count": len(spans),
             "has_error": has_error,
             "total_duration_ms": total_duration,
             "services": services,
-            "category": category
+            "category": category,
+            "incident": incident,
+            "severity": severity
         })
-
     return result
 
 
-# Get complete details of a specific trace
 @router.get("/traces/{trace_id}")
 def get_trace_detail(trace_id: str, db: Session = Depends(get_db)):
-
-    # Fetch all spans for the given trace ID
     spans = db.query(Span).filter(Span.trace_id == trace_id).all()
-
-    # Return error if trace does not exist
     if not spans:
         return {"error": "Trace not found"}
-
-    # Return detailed span information
     return {
         "trace_id": trace_id,
         "spans": [

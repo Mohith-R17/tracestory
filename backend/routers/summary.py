@@ -9,51 +9,59 @@ router = APIRouter()
 
 @router.get("/summary/{trace_id}")
 def get_summary(trace_id: str, db: Session = Depends(get_db)):
-    existing = db.query(TraceSummary).filter(TraceSummary.trace_id == trace_id).first()
-    if existing:
-        return {"trace_id": trace_id, "summary": existing.summary}
+    try:
+        existing = db.query(TraceSummary).filter(TraceSummary.trace_id == trace_id).first()
+        if existing:
+            return {"trace_id": trace_id, "summary": existing.summary}
 
-    spans = db.query(Span).filter(Span.trace_id == trace_id).all()
-    if not spans:
-        return {"error": "Trace not found"}
+        spans = db.query(Span).filter(Span.trace_id == trace_id).all()
+        if not spans:
+            return {"error": "Trace not found"}
 
-    summary_text = generate_summary(spans)
+        summary_text = generate_summary(spans)
 
-    db_summary = TraceSummary(
-        trace_id=trace_id,
-        summary=summary_text,
-        root_service=spans[0].service_name,
-        total_duration_ms=sum(s.duration_ms for s in spans),
-        has_error=str(any(s.status == "ERROR" for s in spans)),
-        category=spans[0].category
-    )
-    db.add(db_summary)
-    db.commit()
-    return {"trace_id": trace_id, "summary": summary_text}
+        db_summary = TraceSummary(
+            trace_id=trace_id,
+            summary=summary_text,
+            root_service=spans[0].service_name,
+            total_duration_ms=sum(s.duration_ms for s in spans),
+            has_error=str(any(s.status == "ERROR" for s in spans)),
+            category=spans[0].category
+        )
+        db.add(db_summary)
+        db.commit()
+        return {"trace_id": trace_id, "summary": summary_text}
+    except Exception as e:
+        print(f"Exception in get_summary: {e}")
+        return {"error": f"Failed to retrieve or generate trace summary: {str(e)}"}
 
 
 @router.post("/summary/{trace_id}/regenerate")
 def regenerate_summary(trace_id: str, db: Session = Depends(get_db)):
-    db.query(TraceSummary).filter(TraceSummary.trace_id == trace_id).delete()
-    db.commit()
+    try:
+        db.query(TraceSummary).filter(TraceSummary.trace_id == trace_id).delete()
+        db.commit()
 
-    spans = db.query(Span).filter(Span.trace_id == trace_id).all()
-    if not spans:
-        return {"error": "Trace not found"}
+        spans = db.query(Span).filter(Span.trace_id == trace_id).all()
+        if not spans:
+            return {"error": "Trace not found"}
 
-    summary_text = generate_summary(spans)
+        summary_text = generate_summary(spans)
 
-    db_summary = TraceSummary(
-        trace_id=trace_id,
-        summary=summary_text,
-        root_service=spans[0].service_name,
-        total_duration_ms=sum(s.duration_ms for s in spans),
-        has_error=str(any(s.status == "ERROR" for s in spans)),
-        category=spans[0].category
-    )
-    db.add(db_summary)
-    db.commit()
-    return {"trace_id": trace_id, "summary": summary_text}
+        db_summary = TraceSummary(
+            trace_id=trace_id,
+            summary=summary_text,
+            root_service=spans[0].service_name,
+            total_duration_ms=sum(s.duration_ms for s in spans),
+            has_error=str(any(s.status == "ERROR" for s in spans)),
+            category=spans[0].category
+        )
+        db.add(db_summary)
+        db.commit()
+        return {"trace_id": trace_id, "summary": summary_text}
+    except Exception as e:
+        print(f"Exception in regenerate_summary: {e}")
+        return {"error": f"Failed to regenerate trace summary: {str(e)}"}
 
 
 class CompareRequest(BaseModel):
@@ -62,24 +70,31 @@ class CompareRequest(BaseModel):
 
 @router.post("/compare")
 def compare_traces(payload: CompareRequest, db: Session = Depends(get_db)):
-    spans_a = db.query(Span).filter(Span.trace_id == payload.trace_id_a).all()
-    spans_b = db.query(Span).filter(Span.trace_id == payload.trace_id_b).all()
+    try:
+        spans_a = db.query(Span).filter(Span.trace_id == payload.trace_id_a).all()
+        spans_b = db.query(Span).filter(Span.trace_id == payload.trace_id_b).all()
 
-    if not spans_a or not spans_b:
-        return {"error": "One or both traces not found"}
+        if not spans_a or not spans_b:
+            return {"error": "One or both traces not found"}
 
-    summary_a = db.query(TraceSummary).filter(TraceSummary.trace_id == payload.trace_id_a).first()
-    summary_b = db.query(TraceSummary).filter(TraceSummary.trace_id == payload.trace_id_b).first()
+        summary_a = db.query(TraceSummary).filter(TraceSummary.trace_id == payload.trace_id_a).first()
+        summary_b = db.query(TraceSummary).filter(TraceSummary.trace_id == payload.trace_id_b).first()
 
-    text_a = summary_a.summary if summary_a else generate_summary(spans_a)
-    text_b = summary_b.summary if summary_b else generate_summary(spans_b)
+        text_a = summary_a.summary if summary_a else generate_summary(spans_a)
+        text_b = summary_b.summary if summary_b else generate_summary(spans_b)
 
-    comparison = generate_comparison(spans_a, spans_b, text_a, text_b)
+        cat_a = spans_a[0].category if spans_a else "general"
+        cat_b = spans_b[0].category if spans_b else "general"
 
-    return {
-        "trace_id_a": payload.trace_id_a,
-        "trace_id_b": payload.trace_id_b,
-        "summary_a": text_a,
-        "summary_b": text_b,
-        "comparison": comparison
-    }
+        comparison = generate_comparison(spans_a, spans_b, text_a, text_b, cat_a, cat_b)
+
+        return {
+            "trace_id_a": payload.trace_id_a,
+            "trace_id_b": payload.trace_id_b,
+            "summary_a": text_a,
+            "summary_b": text_b,
+            "comparison": comparison
+        }
+    except Exception as e:
+        print(f"Exception in compare_traces: {e}")
+        return {"error": f"Failed to compare traces: {str(e)}"}
