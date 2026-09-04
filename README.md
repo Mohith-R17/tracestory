@@ -242,4 +242,5 @@ Run the complete test suite (E2E integration, RCA scoring rules, and SDK mocks):
            ▼
 [ Render Databases ] (PostgreSQL 17 Database Engine)
 ```
+*   The repository includes a `render.yaml` Blueprint for automated backend and database provisioning.
 *   See [docs/deployment.md](docs/deployment.md) for step-by-step instructions on Render/Vercel production setups.

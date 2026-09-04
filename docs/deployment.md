@@ -56,25 +56,19 @@ Follow these steps to run a local PostgreSQL database for development:
 
 ## Backend Setup (Render)
 
-1.  **Create PostgreSQL Database**:
-    *   Provision a new database service on Render.
-    *   Note the **Internal Database URL** (used if both services are in the same region) or **External Database URL**.
-2.  **Create Web Service**:
-    *   Connect your GitHub repository.
-    *   Configure the runtime environment as **Python**.
-    *   Set the **Build Command**:
-        ```bash
-        pip install -r requirements.txt
-        ```
-    *   Set the **Start Command**:
-        ```bash
-        uvicorn backend.main:app --host 0.0.0.0 --port $PORT
-        ```
-3.  **Configure Environment Variables**:
-    Under the **Environment** tab, set:
-    *   `DATABASE_URL` (to the database URL obtained above)
-    *   `GROQ_API_KEY`
-    *   `FRONTEND_ORIGIN` (to your vercel app domain)
+The easiest way to deploy is using the provided Render Blueprint (`render.yaml`).
+
+1.  **Deploy using Blueprint**:
+    *   Connect your GitHub repository to Render.
+    *   Render will automatically detect the `render.yaml` Blueprint and propose creating the Static Site (`tracestory-frontend`), Web Service (`tracestory-backend`) and PostgreSQL Database (`tracestory-db`).
+    *   Click **Apply**.
+    *   Render will prompt you to provide values for `GROQ_API_KEY` and `FRONTEND_ORIGIN`.
+    *   *(Note: Set `FRONTEND_ORIGIN` to your new `tracestory-frontend` URL once it's created)*
+2.  **Manual Setup (Alternative)**:
+    *   If not using the Blueprint, manually create a PostgreSQL database and a Web Service (Python runtime).
+    *   Build Command: `pip install -r requirements.txt`
+    *   Start Command: `uvicorn backend.main:app --host 0.0.0.0 --port $PORT`
+    *   Set environment variables: `DATABASE_URL` (internal DB link), `GROQ_API_KEY`, and `FRONTEND_ORIGIN`.
 
 ---
 
