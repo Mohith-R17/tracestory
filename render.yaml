@@ -22,7 +22,7 @@ services:
       - key: GROQ_API_KEY
         sync: false
       - key: FRONTEND_ORIGIN
-        sync: false
+        value: https://tracestory-frontend.onrender.com
     healthCheckPath: /health
 
 databases:
