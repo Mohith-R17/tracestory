@@ -7,7 +7,7 @@ services:
     rootDir: frontend
     envVars:
       - key: REACT_APP_API_URL
-        value: ${tracestory-backend.url}/api
+        value: https://tracestory-backend.onrender.com/api
 
   - type: web
     name: tracestory-backend
