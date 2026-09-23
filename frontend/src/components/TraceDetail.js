@@ -122,7 +122,7 @@ export default function TraceDetail({ traceId, onClose }) {
         <div style={{ padding: '24px', flex: 1, overflowY: 'auto' }}>
           {loading ? (
             <div style={{ color: '#6b7280', textAlign: 'center', padding: '40px', fontSize: '14px' }}>Loading trace telemetry...</div>
-          ) : traceData ? (
+          ) : traceData && !traceData.error ? (
             <div>
               {/* Header metrics card group */}
               <div style={{ display: 'flex', gap: '16px', marginBottom: '28px' }}>
@@ -336,7 +336,13 @@ export default function TraceDetail({ traceId, onClose }) {
               </div>
             </div>
           ) : (
-            <div style={{ color: '#6b7280', textAlign: 'center', padding: '40px', fontSize: '14px' }}>Failed to retrieve trace data.</div>
+            <div style={{ color: '#6b7280', textAlign: 'center', padding: '40px', fontSize: '14px' }}>
+              {traceData?.error ? (
+                <span style={{ color: '#ef4444' }}>{traceData.error}</span>
+              ) : (
+                "Failed to retrieve trace data."
+              )}
+            </div>
           )}
         </div>
       </div>

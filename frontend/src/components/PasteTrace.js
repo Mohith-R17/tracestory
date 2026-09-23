@@ -76,7 +76,22 @@ export default function PasteTrace({ onIngestSuccess, onSelectTrace }) {
     const template = JSON.parse(JSON.stringify(EXAMPLES[key]));
     // Dynamically assign unique trace ID to spans
     const uniqueId = `req-${key}-${Math.floor(Math.random() * 1000000)}`;
-    template.spans.forEach(s => s.trace_id = uniqueId);
+    
+    // Map old span IDs to new span IDs to preserve parent_id relationships
+    const spanIdMap = {};
+    
+    template.spans.forEach((s) => {
+      s.trace_id = uniqueId;
+      const newSpanId = `${s.span_id}-${Math.floor(Math.random() * 1000000)}`;
+      spanIdMap[s.span_id] = newSpanId;
+      s.span_id = newSpanId;
+    });
+    
+    template.spans.forEach(s => {
+      if (s.parent_id && spanIdMap[s.parent_id]) {
+        s.parent_id = spanIdMap[s.parent_id];
+      }
+    });
     
     setJsonInput(JSON.stringify(template, null, 2));
     setStatus(null);
